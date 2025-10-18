@@ -1,0 +1,57 @@
+-- Usuários
+CREATE TABLE usuarios (
+  id SERIAL PRIMARY KEY,
+  tipo TEXT NOT NULL,
+  login TEXT NOT NULL UNIQUE,
+  senha_hash TEXT NOT NULL,
+  nome TEXT NOT NULL,
+  email TEXT,
+  telefone TEXT,
+  status TEXT NOT NULL DEFAULT 'ativo',
+  data_criacao TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Responsaveis
+CREATE TABLE responsaveis (
+  id SERIAL PRIMARY KEY,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  nome TEXT NOT NULL,
+  cpf TEXT,
+  telefone TEXT,
+  email TEXT
+);
+
+-- Carteiras
+CREATE TABLE carteiras (
+  id SERIAL PRIMARY KEY,
+  numero_carteira TEXT NOT NULL UNIQUE,
+  saldo NUMERIC(10,2) NOT NULL,
+  saldo_inicial NUMERIC(10,2) NOT NULL,
+  senha_recuperacao_hash TEXT,
+  status TEXT NOT NULL DEFAULT 'ativo',
+  data_emissao TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  data_validade TIMESTAMP WITH TIME ZONE,
+  caixa_id INTEGER REFERENCES usuarios(id),
+  atendente_nome TEXT
+);
+
+-- Vendas caixa (emissoes)
+CREATE TABLE vendas_caixa (
+  id SERIAL PRIMARY KEY,
+  numero_carteira TEXT NOT NULL REFERENCES carteiras(numero_carteira),
+  valor_carregado NUMERIC(10,2) NOT NULL,
+  data_venda TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  caixa_id INTEGER REFERENCES usuarios(id),
+  atendente_nome TEXT
+);
+
+-- Vendas barracas
+CREATE TABLE vendas_barracas (
+  id SERIAL PRIMARY KEY,
+  numero_carteira TEXT NOT NULL REFERENCES carteiras(numero_carteira),
+  barraca_id INTEGER NOT NULL REFERENCES usuarios(id),
+  valor_compra NUMERIC(10,2) NOT NULL,
+  saldo_anterior NUMERIC(10,2) NOT NULL,
+  saldo_restante NUMERIC(10,2) NOT NULL,
+  data_compra TIMESTAMP WITH TIME ZONE DEFAULT now()
+);

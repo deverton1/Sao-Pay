@@ -10,7 +10,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Edit, Trash2, Plus, Search } from "lucide-react";
 
 export interface CRUDTableColumn<T> {
@@ -47,7 +53,7 @@ export default function CRUDTable<T extends { id: number | string }>({
   const filteredData = data.filter((item) => {
     const searchStr = searchTerm.toLowerCase();
     return Object.values(item).some((value) =>
-      String(value).toLowerCase().includes(searchStr)
+      String(value).toLowerCase().includes(searchStr),
     );
   });
 
@@ -60,10 +66,7 @@ export default function CRUDTable<T extends { id: number | string }>({
             {description && <CardDescription>{description}</CardDescription>}
           </div>
           {onAdd && (
-            <Button
-              onClick={onAdd}
-              data-testid="button-add"
-            >
+            <Button onClick={onAdd} data-testid="button-add">
               <Plus className="w-4 h-4 mr-2" />
               {addButtonLabel}
             </Button>
@@ -89,7 +92,9 @@ export default function CRUDTable<T extends { id: number | string }>({
                 {columns.map((column, index) => (
                   <TableHead key={index}>{column.label}</TableHead>
                 ))}
-                {(onEdit || onDelete) && <TableHead className="text-right">Ações</TableHead>}
+                {(onEdit || onDelete) && (
+                  <TableHead className="text-right">Ações</TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>

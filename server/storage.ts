@@ -1,4 +1,6 @@
+// storage.ts
 import { Pool } from "pg";
+import "dotenv/config";
 
 export type UsuarioTipo = "admin" | "caixa" | "barraca";
 export type UsuarioStatus = "ativo" | "inativo";
@@ -40,6 +42,7 @@ export interface VendaCaixa {
   valorCarregado: number;
   caixaId: number;
   atendenteNome: string;
+  dataVenda: Date | string;
 }
 
 export interface VendaBarraca {
@@ -49,18 +52,20 @@ export interface VendaBarraca {
   valorCompra: number;
   saldoAnterior: number;
   saldoRestante: number;
+  dataCompra: Date | string;
 }
 
 class PostgresStorage {
   private pool: Pool;
 
   constructor() {
+    const connectionString =
+      process.env.DATABASE_URL ||
+      "postgres://postgres:1234@localhost:5432/saobenedito";
+
     this.pool = new Pool({
-      user: "postgres",
-      host: "localhost",
-      database: "saobenedito",
-      password: "1234",
-      port: 5432,
+      connectionString,
+      ssl: connectionString.includes("render.com") ? { rejectUnauthorized: false } : false,
     });
   }
 
@@ -136,12 +141,12 @@ class PostgresStorage {
   // ===============================
   async listCarteiras(): Promise<Carteira[]> {
     const res = await this.pool.query(`SELECT * FROM carteiras`);
-    return res.rows;
+    return res.rows.map(row => this.formatCarteira(row));
   }
 
   async listCarteirasByCaixa(caixaId: number): Promise<Carteira[]> {
     const res = await this.pool.query(`SELECT * FROM carteiras WHERE caixa_id=$1`, [caixaId]);
-    return res.rows;
+    return res.rows.map(row => this.formatCarteira(row));
   }
 
   async createCarteira(data: Omit<Carteira, "status"> & { status?: "ativo" | "inativo" }): Promise<Carteira> {
@@ -151,7 +156,7 @@ class PostgresStorage {
        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
       [numeroCarteira, saldo, saldoInicial, senhaRecuperacaoHash, caixaId, atendenteNome, status]
     );
-    return res.rows[0];
+    return this.formatCarteira(res.rows[0]);
   }
 
   async updateCarteira(numeroCarteira: string, data: Partial<Omit<Carteira, "numeroCarteira">>): Promise<Carteira | undefined> {
@@ -166,12 +171,12 @@ class PostgresStorage {
       `UPDATE carteiras SET ${setString} WHERE numero_carteira=$${values.length} RETURNING *`,
       values
     );
-    return res.rows[0];
+    return res.rows[0] ? this.formatCarteira(res.rows[0]) : undefined;
   }
 
   async getCarteiraByNumero(numeroCarteira: string): Promise<Carteira | undefined> {
     const res = await this.pool.query(`SELECT * FROM carteiras WHERE numero_carteira=$1`, [numeroCarteira]);
-    return res.rows[0];
+    return res.rows[0] ? this.formatCarteira(res.rows[0]) : undefined;
   }
 
   // ===============================
@@ -181,37 +186,37 @@ class PostgresStorage {
     const res = caixaId
       ? await this.pool.query(`SELECT * FROM vendas_caixa WHERE caixa_id=$1`, [caixaId])
       : await this.pool.query(`SELECT * FROM vendas_caixa`);
-    return res.rows;
+    return res.rows.map(row => this.formatVendaCaixa(row));
   }
 
-  async createVendaCaixa(data: Omit<VendaCaixa, "id">): Promise<VendaCaixa> {
+  async createVendaCaixa(data: Omit<VendaCaixa, "id" | "dataVenda">): Promise<VendaCaixa> {
     const { numeroCarteira, valorCarregado, caixaId, atendenteNome } = data;
     const res = await this.pool.query(
       `INSERT INTO vendas_caixa (numero_carteira, valor_carregado, caixa_id, atendente_nome)
        VALUES ($1,$2,$3,$4) RETURNING *`,
       [numeroCarteira, valorCarregado, caixaId, atendenteNome]
     );
-    return res.rows[0];
+    return this.formatVendaCaixa(res.rows[0]);
   }
 
   // ===============================
-  // VENDAS BARRACA
+  // VENDAS BARRACAS
   // ===============================
   async listVendasBarraca(barracaId?: number): Promise<VendaBarraca[]> {
     const res = barracaId
-      ? await this.pool.query(`SELECT * FROM vendas_barraca WHERE barraca_id=$1`, [barracaId])
-      : await this.pool.query(`SELECT * FROM vendas_barraca`);
-    return res.rows;
+      ? await this.pool.query(`SELECT * FROM vendas_barracas WHERE barraca_id=$1`, [barracaId])
+      : await this.pool.query(`SELECT * FROM vendas_barracas`);
+    return res.rows.map(row => this.formatVendaBarraca(row));
   }
 
-  async createVendaBarraca(data: Omit<VendaBarraca, "id">): Promise<VendaBarraca> {
+  async createVendaBarraca(data: Omit<VendaBarraca, "id" | "dataCompra">): Promise<VendaBarraca> {
     const { numeroCarteira, barracaId, valorCompra, saldoAnterior, saldoRestante } = data;
     const res = await this.pool.query(
-      `INSERT INTO vendas_barraca (numero_carteira, barraca_id, valor_compra, saldo_anterior, saldo_restante)
+      `INSERT INTO vendas_barracas (numero_carteira, barraca_id, valor_compra, saldo_anterior, saldo_restante)
        VALUES ($1,$2,$3,$4,$5) RETURNING *`,
       [numeroCarteira, barracaId, valorCompra, saldoAnterior, saldoRestante]
     );
-    return res.rows[0];
+    return this.formatVendaBarraca(res.rows[0]);
   }
 
   // ===============================
@@ -228,6 +233,41 @@ class PostgresStorage {
       senhaHash: row.senha_hash,
       status: row.status,
       dataCriacao: row.data_criacao,
+    };
+  }
+
+  private formatCarteira(row: any): Carteira {
+    return {
+      numeroCarteira: row.numero_carteira,
+      saldo: parseFloat(row.saldo),
+      saldoInicial: parseFloat(row.saldo_inicial),
+      senhaRecuperacaoHash: row.senha_recuperacao_hash,
+      status: row.status,
+      caixaId: row.caixa_id,
+      atendenteNome: row.atendente_nome,
+    };
+  }
+
+  private formatVendaCaixa(row: any): VendaCaixa {
+    return {
+      id: row.id,
+      numeroCarteira: row.numero_carteira,
+      valorCarregado: parseFloat(row.valor_carregado),
+      caixaId: row.caixa_id,
+      atendenteNome: row.atendente_nome,
+      dataVenda: row.data_venda,
+    };
+  }
+
+  private formatVendaBarraca(row: any): VendaBarraca {
+    return {
+      id: row.id,
+      numeroCarteira: row.numero_carteira,
+      barracaId: row.barraca_id,
+      valorCompra: parseFloat(row.valor_compra),
+      saldoAnterior: parseFloat(row.saldo_anterior),
+      saldoRestante: parseFloat(row.saldo_restante),
+      dataCompra: row.data_compra,
     };
   }
 }
