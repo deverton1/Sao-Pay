@@ -21,17 +21,9 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import ThemeToggle from "./ThemeToggle";
 import StatsCard from "./StatsCard";
 import CRUDTable, { CRUDTableColumn } from "./CRUDTable";
@@ -67,16 +59,26 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
   });
 
   const { toast } = useToast();
+  const token = localStorage.getItem("sao-pay-token");
 
-  const { data: estatisticas } = useQuery<any>({
+  // ======== QUERIES =========
+
+  const { data: estatisticas } = useQuery({
     queryKey: ["/api/admin/estatisticas"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/estatisticas", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Erro ao buscar estatísticas");
+      return res.json();
+    },
   });
 
   const { data: caixas = [], isLoading: isLoadingCaixas } = useQuery<UsuarioComResponsavel[]>({
-    queryKey: ["/api/admin/usuarios", { tipo: "caixa" }],
+    queryKey: ["/api/admin/usuarios", "caixa"],
     queryFn: async () => {
       const response = await fetch("/api/admin/usuarios?tipo=caixa", {
-        headers: { Authorization: `Bearer ${localStorage.getItem("sao-pay-token")}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error("Erro ao buscar caixas");
       return response.json();
@@ -84,58 +86,69 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
   });
 
   const { data: barracas = [], isLoading: isLoadingBarracas } = useQuery<UsuarioComResponsavel[]>({
-    queryKey: ["/api/admin/usuarios", { tipo: "barraca" }],
+    queryKey: ["/api/admin/usuarios", "barraca"],
     queryFn: async () => {
       const response = await fetch("/api/admin/usuarios?tipo=barraca", {
-        headers: { Authorization: `Bearer ${localStorage.getItem("sao-pay-token")}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error("Erro ao buscar barracas");
       return response.json();
     },
   });
 
+  // ======== MUTATIONS =========
+
   const createUsuarioMutation = useMutation({
-    mutationFn: async (data: any) => apiRequest("/api/admin/usuarios", { method: "POST", body: JSON.stringify(data) }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/usuarios"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/estatisticas"] });
+    mutationFn: async (data: any) =>
+      apiRequest("/api/admin/usuarios", { method: "POST", body: JSON.stringify(data) }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/admin/usuarios"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/admin/estatisticas"] });
       toast({ title: "Sucesso", description: "Usuário criado com sucesso" });
-      setDialogOpen(false);
-      resetForm();
+      handleDialogClose();
     },
-    onError: (error: any) => {
-      toast({ title: "Erro", description: error.message || "Erro ao criar usuário", variant: "destructive" });
-    },
+    onError: (error: any) =>
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao criar usuário",
+        variant: "destructive",
+      }),
   });
 
   const updateUsuarioMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: any }) =>
       apiRequest(`/api/admin/usuarios/${id}`, { method: "PUT", body: JSON.stringify(data) }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/usuarios"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/estatisticas"] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/admin/usuarios"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/admin/estatisticas"] });
       toast({ title: "Sucesso", description: "Usuário atualizado com sucesso" });
-      setDialogOpen(false);
-      setEditingItem(null);
-      resetForm();
+      handleDialogClose();
     },
-    onError: (error: any) => {
-      toast({ title: "Erro", description: error.message || "Erro ao atualizar usuário", variant: "destructive" });
-    },
+    onError: (error: any) =>
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao atualizar usuário",
+        variant: "destructive",
+      }),
   });
 
   const deleteUsuarioMutation = useMutation({
     mutationFn: async (id: number) =>
       apiRequest(`/api/admin/usuarios/${id}`, { method: "DELETE" }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/usuarios"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/estatisticas"] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/admin/usuarios"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/admin/estatisticas"] });
       toast({ title: "Sucesso", description: "Usuário removido com sucesso" });
     },
-    onError: (error: any) => {
-      toast({ title: "Erro", description: error.message || "Erro ao remover usuário", variant: "destructive" });
-    },
+    onError: (error: any) =>
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao remover usuário",
+        variant: "destructive",
+      }),
   });
+
+  // ======== HELPERS =========
 
   const resetForm = () => {
     setFormData({
@@ -152,16 +165,22 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
     });
   };
 
+  const handleDialogClose = () => {
+    setDialogOpen(false);
+    setEditingItem(null);
+    resetForm();
+  };
+
   const handleAdd = (tipo: "caixa" | "barraca") => {
     setEditingItem(null);
     resetForm();
-    setFormData({ ...formData, tipo });
+    setFormData((prev) => ({ ...prev, tipo }));
     setDialogOpen(true);
   };
 
   const handleEdit = (item: UsuarioComResponsavel) => {
+    const responsavel = item.responsaveis?.[0];
     setEditingItem(item);
-    const responsavel = item.responsaveis[0];
     setFormData({
       tipo: item.tipo as "caixa" | "barraca",
       login: item.login,
@@ -179,12 +198,20 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
 
   const handleSubmit = () => {
     if (!formData.login || !formData.nome) {
-      toast({ title: "Campos obrigatórios", description: "Preencha login e nome", variant: "destructive" });
+      toast({
+        title: "Campos obrigatórios",
+        description: "Preencha login e nome",
+        variant: "destructive",
+      });
       return;
     }
 
     if (!editingItem && !formData.senha) {
-      toast({ title: "Senha obrigatória", description: "Informe uma senha para o novo usuário", variant: "destructive" });
+      toast({
+        title: "Senha obrigatória",
+        description: "Informe uma senha para o novo usuário",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -214,36 +241,44 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
     }
   };
 
+  // ======== COLUMNS =========
+
   const caixasColumns: CRUDTableColumn<UsuarioComResponsavel>[] = [
     { key: "nome", label: "Nome do Caixa" },
-    { key: "responsaveis", label: "Responsável", render: (item) => item.responsaveis[0]?.nome || "-" },
+    { key: "responsaveis", label: "Responsável", render: (item) => item.responsaveis?.[0]?.nome || "-" },
     { key: "email", label: "Email", render: (item) => item.email || "-" },
     {
-      key: "status", label: "Status", render: (item) => (
-        <Badge variant={item.status === "ativo" ? "default" : "secondary"} data-testid={`status-caixa-${item.id}`}>
+      key: "status",
+      label: "Status",
+      render: (item) => (
+        <Badge variant={item.status === "ativo" ? "default" : "secondary"}>
           {item.status === "ativo" ? "Ativo" : "Inativo"}
         </Badge>
-      )
+      ),
     },
   ];
 
   const barracasColumns: CRUDTableColumn<UsuarioComResponsavel>[] = [
     { key: "nome", label: "Nome da Barraca" },
-    { key: "responsaveis", label: "Responsável", render: (item) => item.responsaveis[0]?.nome || "-" },
+    { key: "responsaveis", label: "Responsável", render: (item) => item.responsaveis?.[0]?.nome || "-" },
     { key: "telefone", label: "Telefone", render: (item) => item.telefone || "-" },
     {
-      key: "status", label: "Status", render: (item) => (
-        <Badge variant={item.status === "ativo" ? "default" : "secondary"} data-testid={`status-barraca-${item.id}`}>
+      key: "status",
+      label: "Status",
+      render: (item) => (
+        <Badge variant={item.status === "ativo" ? "default" : "secondary"}>
           {item.status === "ativo" ? "Ativo" : "Inativo"}
         </Badge>
-      )
+      ),
     },
   ];
 
-  const sidebarStyle = { "--sidebar-width": "16rem" };
-  
+  const sidebarStyle = { "--sidebar-width": "16rem" } as React.CSSProperties;
+
+  // ======== RENDER =========
+
   return (
-    <SidebarProvider style={sidebarStyle as React.CSSProperties}>
+    <SidebarProvider style={sidebarStyle}>
       <div className="flex h-screen w-full">
         <Sidebar>
           <SidebarHeader className="p-4 border-b">
@@ -264,7 +299,6 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
                   onClick={() => setActiveTab("overview")}
                   data-active={activeTab === "overview"}
                   className="data-[active=true]:bg-sidebar-accent"
-                  data-testid="nav-overview"
                 >
                   <Activity className="w-4 h-4" />
                   <span>Visão Geral</span>
@@ -275,7 +309,6 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
                   onClick={() => setActiveTab("caixas")}
                   data-active={activeTab === "caixas"}
                   className="data-[active=true]:bg-sidebar-accent"
-                  data-testid="nav-caixas"
                 >
                   <Wallet className="w-4 h-4" />
                   <span>Caixas</span>
@@ -286,7 +319,6 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
                   onClick={() => setActiveTab("barracas")}
                   data-active={activeTab === "barracas"}
                   className="data-[active=true]:bg-sidebar-accent"
-                  data-testid="nav-barracas"
                 >
                   <Store className="w-4 h-4" />
                   <span>Barracas</span>
@@ -300,13 +332,7 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
                 <p className="font-medium">{nomeUsuario}</p>
                 <p className="text-muted-foreground text-xs">Administrador</p>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                onClick={onLogout}
-                data-testid="button-logout"
-              >
+              <Button variant="outline" size="sm" className="w-full" onClick={onLogout}>
                 <LogOut className="w-4 h-4" />
                 <span>Sair</span>
               </Button>
@@ -316,13 +342,13 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
 
         <div className="flex flex-col flex-1">
           <header className="flex items-center justify-between p-4 border-b bg-card">
-            <SidebarTrigger data-testid="button-sidebar-toggle" />
+            <SidebarTrigger />
             <ThemeToggle />
           </header>
 
           <main className="flex-1 overflow-auto p-8">
             {activeTab === "overview" && (
-              <div className="space-y-8">
+              <div className="space-y-8 animate-fadeIn">
                 <div>
                   <h1 className="text-3xl font-bold mb-2">Visão Geral</h1>
                   <p className="text-muted-foreground">Dashboard administrativo do sistema</p>
@@ -367,13 +393,13 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
             )}
 
             {activeTab === "caixas" && (
-              <div className="space-y-4">
+              <div className="space-y-4 animate-fadeIn">
                 <div className="flex items-center justify-between">
                   <div>
                     <h1 className="text-3xl font-bold mb-2">Gerenciar Caixas</h1>
                     <p className="text-muted-foreground">Cadastre e gerencie os caixas do sistema</p>
                   </div>
-                  <Button onClick={() => handleAdd("caixa")} data-testid="button-add-caixa">
+                  <Button onClick={() => handleAdd("caixa")}>
                     <Plus className="w-4 h-4" />
                     <span>Novo Caixa</span>
                   </Button>
@@ -394,13 +420,13 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
             )}
 
             {activeTab === "barracas" && (
-              <div className="space-y-4">
+              <div className="space-y-4 animate-fadeIn">
                 <div className="flex items-center justify-between">
                   <div>
                     <h1 className="text-3xl font-bold mb-2">Gerenciar Barracas</h1>
                     <p className="text-muted-foreground">Cadastre e gerencie as barracas do sistema</p>
                   </div>
-                  <Button onClick={() => handleAdd("barraca")} data-testid="button-add-barraca">
+                  <Button onClick={() => handleAdd("barraca")}>
                     <Plus className="w-4 h-4" />
                     <span>Nova Barraca</span>
                   </Button>
@@ -424,16 +450,19 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-auto" data-testid="dialog-usuario-form">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-auto">
           <DialogHeader>
             <DialogTitle>
-              {editingItem ? `Editar ${formData.tipo === "caixa" ? "Caixa" : "Barraca"}` : `Novo ${formData.tipo === "caixa" ? "Caixa" : "Barraca"}`}
+              {editingItem
+                ? `Editar ${formData.tipo === "caixa" ? "Caixa" : "Barraca"}`
+                : `Novo ${formData.tipo === "caixa" ? "Caixa" : "Barraca"}`}
             </DialogTitle>
             <DialogDescription>
               Preencha os dados {editingItem ? "para atualizar" : "do novo"} {formData.tipo}
             </DialogDescription>
           </DialogHeader>
 
+          {/* FORMULARIO */}
           <div className="space-y-6">
             <div className="space-y-4">
               <h3 className="font-medium">Dados de Acesso</h3>
@@ -442,7 +471,6 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
                   <Label htmlFor="login">Login *</Label>
                   <Input
                     id="login"
-                    data-testid="input-login"
                     value={formData.login}
                     onChange={(e) => setFormData({ ...formData, login: e.target.value })}
                     disabled={!!editingItem}
@@ -452,7 +480,6 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
                   <Label htmlFor="senha">Senha {!editingItem && "*"}</Label>
                   <Input
                     id="senha"
-                    data-testid="input-senha"
                     type="password"
                     value={formData.senha}
                     onChange={(e) => setFormData({ ...formData, senha: e.target.value })}
@@ -463,13 +490,14 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
             </div>
 
             <div className="space-y-4">
-              <h3 className="font-medium">Dados {formData.tipo === "caixa" ? "do Caixa" : "da Barraca"}</h3>
+              <h3 className="font-medium">
+                Dados {formData.tipo === "caixa" ? "do Caixa" : "da Barraca"}
+              </h3>
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="nome">Nome *</Label>
                   <Input
                     id="nome"
-                    data-testid="input-nome"
                     value={formData.nome}
                     onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
                   />
@@ -479,7 +507,6 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
                     <Label htmlFor="email">Email</Label>
                     <Input
                       id="email"
-                      data-testid="input-email"
                       type="email"
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -489,7 +516,6 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
                     <Label htmlFor="telefone">Telefone</Label>
                     <Input
                       id="telefone"
-                      data-testid="input-telefone"
                       value={formData.telefone}
                       onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
                     />
@@ -505,7 +531,6 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
                   <Label htmlFor="responsavel-nome">Nome do Responsável</Label>
                   <Input
                     id="responsavel-nome"
-                    data-testid="input-responsavel-nome"
                     value={formData.responsavelNome}
                     onChange={(e) => setFormData({ ...formData, responsavelNome: e.target.value })}
                   />
@@ -515,7 +540,6 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
                     <Label htmlFor="responsavel-cpf">CPF</Label>
                     <Input
                       id="responsavel-cpf"
-                      data-testid="input-responsavel-cpf"
                       value={formData.responsavelCpf}
                       onChange={(e) => setFormData({ ...formData, responsavelCpf: e.target.value })}
                     />
@@ -524,9 +548,10 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
                     <Label htmlFor="responsavel-telefone">Telefone</Label>
                     <Input
                       id="responsavel-telefone"
-                      data-testid="input-responsavel-telefone"
                       value={formData.responsavelTelefone}
-                      onChange={(e) => setFormData({ ...formData, responsavelTelefone: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, responsavelTelefone: e.target.value })
+                      }
                     />
                   </div>
                 </div>
@@ -534,10 +559,11 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
                   <Label htmlFor="responsavel-email">Email</Label>
                   <Input
                     id="responsavel-email"
-                    data-testid="input-responsavel-email"
                     type="email"
                     value={formData.responsavelEmail}
-                    onChange={(e) => setFormData({ ...formData, responsavelEmail: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, responsavelEmail: e.target.value })
+                    }
                   />
                 </div>
               </div>
@@ -545,19 +571,18 @@ export default function AdminDashboard({ nomeUsuario, onLogout }: AdminDashboard
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} data-testid="button-cancel">
+            <Button variant="outline" onClick={handleDialogClose}>
               Cancelar
             </Button>
             <Button
               onClick={handleSubmit}
               disabled={createUsuarioMutation.isPending || updateUsuarioMutation.isPending}
-              data-testid="button-submit"
             >
               {createUsuarioMutation.isPending || updateUsuarioMutation.isPending
                 ? "Salvando..."
                 : editingItem
-                  ? "Atualizar"
-                  : "Criar"}
+                ? "Atualizar"
+                : "Criar"}
             </Button>
           </DialogFooter>
         </DialogContent>
